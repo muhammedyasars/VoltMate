@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Pricing', path: '/pricing' },
   { label: 'About', path: '/about' },
   { label: 'Contact', path: '/contact' },
+  { label: 'Chat', path: '/chat', badge: true }, // Added Chat with badge
 ];
 
 export default function Header() {
@@ -20,6 +21,9 @@ export default function Header() {
   const { user, isAuthenticated, logout } = useAuthStore();
   const { onOpen } = useModalStore(); 
   const pathname = usePathname();
+
+  // Mock unread message count - replace with actual data from your chat store
+  const unreadMessages = 3;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -41,7 +45,7 @@ export default function Header() {
       <div className="container flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center space-x-2">
-          <div className="w-10 h-10 bg-primary-500 rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-green-600 rounded-full flex items-center justify-center">
             <i className="ri-charging-pile-2-line text-white text-xl"></i>
           </div>
           <span className="text-xl font-bold font-brand text-gray-900">EVCharge</span>
@@ -53,13 +57,20 @@ export default function Header() {
             <Link 
               key={item.path}
               href={item.path}
-              className={`font-medium transition-colors ${
+              className={`font-medium transition-colors flex items-center ${
                 pathname === item.path 
-                  ? 'text-primary-600' 
-                  : 'text-gray-600 hover:text-primary-600'
+                  ? 'text-green-600' 
+                  : 'text-gray-600 hover:text-green-600'
               }`}
             >
               {item.label}
+              
+              {/* Badge for Chat */}
+              {item.badge && item.path === '/chat' && unreadMessages > 0 && (
+                <div className="ml-1.5 flex items-center justify-center w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full">
+                  {unreadMessages}
+                </div>
+              )}
             </Link>
           ))}
         </nav>
@@ -69,8 +80,8 @@ export default function Header() {
           {isAuthenticated ? (
             <div className="relative group">
               <button className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100">
-                <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-medium text-primary-700">
+                <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-medium text-green-700">
                     {user?.name?.substring(0, 2).toUpperCase() || 'U'}
                   </span>
                 </div>
@@ -99,6 +110,19 @@ export default function Header() {
                       My Bookings
                     </div>
                   </Link>
+                  <Link href="/chat">
+                    <div className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                      <div className="flex items-center">
+                        <i className="ri-chat-3-line mr-2"></i>
+                        Messages
+                      </div>
+                      {unreadMessages > 0 && (
+                        <span className="bg-green-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+                          {unreadMessages}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
                   <Link href="/profile">
                     <div className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                       <i className="ri-user-settings-line mr-2"></i>
@@ -121,13 +145,13 @@ export default function Header() {
             <>
               <button 
                 onClick={() => onOpen('login')}
-                className="text-gray-700 font-medium hover:text-primary-600 transition-colors"
+                className="text-gray-700 font-medium hover:text-green-600 transition-colors"
               >
                 Sign In
               </button>
               <button 
                 onClick={() => onOpen('register')}
-                className="bg-primary-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-primary-600 transition-colors"
+                className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg font-medium hover:from-green-600 hover:to-green-700 transition-colors"
               >
                 Sign Up
               </button>
@@ -152,14 +176,21 @@ export default function Header() {
               <Link 
                 key={item.path}
                 href={item.path}
-                className={`py-2 px-3 rounded-lg font-medium ${
+                className={`py-2 px-3 rounded-lg font-medium flex items-center justify-between ${
                   pathname === item.path 
-                    ? 'bg-primary-50 text-primary-600' 
+                    ? 'bg-green-50 text-green-600' 
                     : 'text-gray-600 hover:bg-gray-50'
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                {item.label}
+                <span>{item.label}</span>
+                
+                {/* Badge for Chat in mobile menu */}
+                {item.badge && item.path === '/chat' && unreadMessages > 0 && (
+                  <div className="flex items-center justify-center w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full">
+                    {unreadMessages}
+                  </div>
+                )}
               </Link>
             ))}
           </nav>
@@ -168,8 +199,8 @@ export default function Header() {
             {isAuthenticated ? (
               <div className="space-y-2">
                 <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-medium text-primary-700">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <span className="text-sm font-medium text-green-700">
                       {user?.name?.substring(0, 2).toUpperCase() || 'U'}
                     </span>
                   </div>
@@ -189,6 +220,19 @@ export default function Header() {
                   <div className="flex items-center py-2 px-3 rounded-lg text-gray-700 hover:bg-gray-50">
                     <i className="ri-calendar-line mr-2"></i>
                     My Bookings
+                  </div>
+                </Link>
+                <Link href="/chat" onClick={() => setMobileMenuOpen(false)}>
+                  <div className="flex items-center justify-between py-2 px-3 rounded-lg text-gray-700 hover:bg-gray-50">
+                    <div className="flex items-center">
+                      <i className="ri-chat-3-line mr-2"></i>
+                      Messages
+                    </div>
+                    {unreadMessages > 0 && (
+                      <span className="bg-green-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+                        {unreadMessages}
+                      </span>
+                    )}
                   </div>
                 </Link>
                 <Link href="/profile" onClick={() => setMobileMenuOpen(false)}>
@@ -225,7 +269,7 @@ export default function Header() {
                     setMobileMenuOpen(false);
                     onOpen('register');
                   }}
-                  className="py-2 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 transition-colors"
+                  className="py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-green-700 transition-colors"
                 >
                   Sign Up
                 </button>

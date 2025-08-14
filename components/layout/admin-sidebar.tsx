@@ -8,37 +8,27 @@ const menuItems = [
   { 
     icon: 'ri-dashboard-line', 
     label: 'Dashboard', 
-    path: '/dashboard/admin' 
+    path: '/admin' 
   },
   { 
     icon: 'ri-user-line', 
     label: 'Users', 
-    path: '/dashboard/admin/users' 
+    path: '/admin/users' 
   },
   { 
     icon: 'ri-user-settings-line', 
     label: 'Managers', 
-    path: '/dashboard/admin/managers' 
+    path: '/admin/managers' 
   },
   { 
     icon: 'ri-charging-pile-2-line', 
     label: 'Stations', 
-    path: '/dashboard/admin/stations' 
+    path: '/admin/stations' 
   },
   { 
     icon: 'ri-calendar-check-line', 
     label: 'Bookings', 
-    path: '/dashboard/admin/bookings' 
-  },
-  { 
-    icon: 'ri-bar-chart-line', 
-    label: 'Reports', 
-    path: '/dashboard/admin/reports' 
-  },
-  { 
-    icon: 'ri-settings-4-line', 
-    label: 'Settings', 
-    path: '/dashboard/admin/settings' 
+    path: '/admin/bookings' 
   }
 ];
 

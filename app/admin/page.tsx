@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Header from '@/components/layout/header';
+
 import AdminSidebar from '@/components/layout/admin-sidebar';
 import StatsWidget from '@/components/dashboard/stats-widget';
 import LoadingSpinner from '@/components/ui/loader';
@@ -129,25 +129,25 @@ export default function AdminDashboard() {
               <div className="bg-white rounded-xl shadow-sm p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Access</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <Link href="/dashboard/admin/users" className="block">
+                  <Link href="/admin/users" className="block">
                     <div className="p-4 bg-blue-50 rounded-lg text-center hover:bg-blue-100 transition-colors">
                       <i className="ri-user-line text-2xl text-blue-600 mb-2"></i>
                       <p className="font-medium text-sm">Users</p>
                     </div>
                   </Link>
-                  <Link href="/dashboard/admin/managers" className="block">
+                  <Link href="/admin/managers" className="block">
                     <div className="p-4 bg-purple-50 rounded-lg text-center hover:bg-purple-100 transition-colors">
                       <i className="ri-user-settings-line text-2xl text-purple-600 mb-2"></i>
                       <p className="font-medium text-sm">Managers</p>
                     </div>
                   </Link>
-                  <Link href="/dashboard/admin/stations" className="block">
+                  <Link href="/admin/stations" className="block">
                     <div className="p-4 bg-green-50 rounded-lg text-center hover:bg-green-100 transition-colors">
                       <i className="ri-charging-pile-2-line text-2xl text-green-600 mb-2"></i>
                       <p className="font-medium text-sm">Stations</p>
                     </div>
                   </Link>
-                  <Link href="/dashboard/admin/reports" className="block">
+                  <Link href="/admin/reports" className="block">
                     <div className="p-4 bg-yellow-50 rounded-lg text-center hover:bg-yellow-100 transition-colors">
                       <i className="ri-file-chart-line text-2xl text-yellow-600 mb-2"></i>
                       <p className="font-medium text-sm">Reports</p>

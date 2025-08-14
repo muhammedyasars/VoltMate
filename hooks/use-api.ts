@@ -1,47 +1,51 @@
-import { useState, useCallback } from 'react';
-import { api } from '@/lib/api-client';
+import { api } from "@/lib/api-client";
+import { useState, useCallback } from "react";
+
 
 export const useApi = <T, P = any>(
   endpoint: string,
-  method: 'get' | 'post' | 'put' | 'delete' = 'get'
+  method: "get" | "post" | "put" | "delete" = "get"
 ) => {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
 
   const execute = useCallback(
-    async (payload?: P) => {
+    async (payload?: P, params?: Record<string, any>) => {
       setLoading(true);
       setError(null);
-      
+
       try {
         let response;
-        
+
         switch (method) {
-          case 'get':
-            response = await api.get<T>(endpoint);
+          case "get":
+            response = await api.get<T>(endpoint, { params });
             break;
-          case 'post':
-            response = await api.post<T>(endpoint, payload);
+          case "post":
+            response = await api.post<T>(endpoint, payload, { params });
             break;
-          case 'put':
-            response = await api.put<T>(endpoint, payload);
+          case "put":
+            response = await api.put<T>(endpoint, payload, { params });
             break;
-          case 'delete':
-            response = await api.delete<T>(endpoint);
+          case "delete":
+            response = await api.delete<T>(endpoint, { params });
             break;
           default:
             throw new Error(`Unsupported method: ${method}`);
         }
-        
+
         setData(response.data);
-        setLoading(false);
         return response.data;
-      } catch (error: any) {
-        const message = error.response?.data?.message || 'An error occurred';
+      } catch (err: any) {
+        const message =
+          err.response?.data?.message ||
+          err.message ||
+          "An error occurred";
         setError(message);
+        throw err;
+      } finally {
         setLoading(false);
-        throw error;
       }
     },
     [endpoint, method]
@@ -51,6 +55,7 @@ export const useApi = <T, P = any>(
     data,
     error,
     loading,
-    execute
+    execute,
+    setData, 
   };
 };

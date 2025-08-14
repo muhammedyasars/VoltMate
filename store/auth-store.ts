@@ -7,18 +7,51 @@ interface LoginCredentials {
   password: string;
 }
 
+interface ManagerLoginCredentials {
+  email: string;
+  password: string;
+  uniqueManagerId: string;
+}
+
+// Add proper interface for manager registration that matches your DTO
+interface ManagerRegisterData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  companyName: string;
+  businessRegistrationNumber: string;
+  phoneNumber?: string;
+}
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'user' | 'manager' | 'admin';
+}
+
+interface ManagerRegistrationResponse {
+  success: boolean;
+  uniqueId?: string;
+  message?: string;
+  error?: string;
+  user?: User;
+  token?: string;
+}
+
 interface AuthState {
-  user: any | null;
+  user: User | null;
   token: string | null;
   isAuthenticated: boolean;
   loading: boolean;
   error: string | null;
   login: (email: string, password: string, remember?: boolean) => Promise<void>;
-  loginManager: (credentials: LoginCredentials) => Promise<void>; // Added for manager login
+  loginManager: (credentials: ManagerLoginCredentials) => Promise<void>;
   register: (userData: any) => Promise<void>;
-  registerManager: (managerData: any) => Promise<void>; // Added for manager registration
+  registerManager: (managerData: ManagerRegisterData) => Promise<ManagerRegistrationResponse>;
   logout: () => void;
-  refreshToken: () => Promise<boolean>;
   checkAuth: () => Promise<boolean>;
 }
 
@@ -28,179 +61,145 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   loading: false,
   error: null,
-  
+
   login: async (email, password, remember = false) => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.post('/auth/login', { email, password });
-      const { token, user } = response.data;
-      
+      const res = await api.post('/Auth/user/login', { email, password });
+      const { token, user } = res.data;
+
       localStorage.setItem('token', token);
-      if (remember) {
-        localStorage.setItem('refreshToken', response.data.refreshToken);
-      }
       
-      set({ 
-        user, 
-        token, 
-        isAuthenticated: true, 
-        loading: false 
-      });
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Login failed', 
-        loading: false 
-      });
-      throw error;
+      set({ user, token, isAuthenticated: true, loading: false });
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Login failed';
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
     }
   },
-  
+
   loginManager: async (credentials) => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.post('/auth/manager/login', credentials);
-      const { token, user } = response.data;
-      
+      const res = await api.post('/Auth/manager/login', credentials);
+      const { token, user } = res.data;
+
       localStorage.setItem('token', token);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
       
-      set({ 
-        user, 
-        token, 
-        isAuthenticated: true, 
-        loading: false 
-      });
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Manager login failed', 
-        loading: false 
-      });
-      throw error;
+      set({ user, token, isAuthenticated: true, loading: false });
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Manager login failed';
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
     }
   },
-  
+
   register: async (userData) => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.post('/auth/register', userData);
-      const { token, user } = response.data;
-      
+      const res = await api.post('/Auth/user/register', userData);
+      const { token, user } = res.data;
+
       localStorage.setItem('token', token);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
       
-      set({ 
-        user, 
-        token, 
-        isAuthenticated: true, 
-        loading: false 
-      });
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Registration failed', 
-        loading: false 
-      });
-      throw error;
+      set({ user, token, isAuthenticated: true, loading: false });
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Registration failed';
+      set({ error: errorMessage, loading: false });
+      throw new Error(errorMessage);
     }
   },
-  
-  registerManager: async (managerData) => {
+
+  registerManager: async (managerData: ManagerRegisterData) => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.post('/auth/manager/register', managerData);
-      const { token, user } = response.data;
+      // Transform the data to match the C# DTO structure (PascalCase)
+      const dto = {
+        FirstName: managerData.firstName,
+        LastName: managerData.lastName,
+        Email: managerData.email,
+        Password: managerData.password,
+        ConfirmPassword: managerData.confirmPassword,
+        CompanyName: managerData.companyName,
+        BusinessRegistrationNumber: managerData.businessRegistrationNumber,
+        PhoneNumber: managerData.phoneNumber || ''
+      };
+
+      const res = await api.post('/Auth/manager/register', dto);
       
+      // Handle response that might indicate failure with status 200
+      if (res.data.success === false) {
+        const errorMessage = res.data.message || 'Manager registration failed';
+        set({ error: errorMessage, loading: false });
+        return { success: false, error: errorMessage };
+      }
+      
+      const { token, user, uniqueId } = res.data;
+
       localStorage.setItem('token', token);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
       
-      set({ 
-        user, 
-        token, 
-        isAuthenticated: true, 
-        loading: false 
-      });
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Manager registration failed', 
-        loading: false 
-      });
-      throw error;
+      set({ user, token, isAuthenticated: true, loading: false });
+      
+      return { 
+        success: true, 
+        uniqueId, 
+        message: 'Manager registration successful',
+        user,
+        token
+      };
+    } catch (err: any) {
+      // Server returned an error status
+      let errorMessage = 'Manager registration failed';
+      
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.response?.data?.errors) {
+        const validationErrors = Object.values(err.response.data.errors).flat();
+        errorMessage = validationErrors.join(', ');
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      set({ error: errorMessage, loading: false });
+      return { success: false, error: errorMessage };
     }
   },
-  
+
   logout: () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    
-    set({ 
-      user: null, 
-      token: null, 
-      isAuthenticated: false 
-    });
+    localStorage.removeItem('loginPreferences');
+    localStorage.removeItem('registeredUser');
+    set({ user: null, token: null, isAuthenticated: false });
   },
-  
-  refreshToken: async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return false;
-    
-    try {
-      const response = await api.post('/auth/refresh-token', { refreshToken });
-      const { token } = response.data;
-      
-      localStorage.setItem('token', token);
-      
-      set({ token });
-      return true;
-    } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      
-      set({ 
-        user: null, 
-        token: null, 
-        isAuthenticated: false 
-      });
-      return false;
-    }
-  },
-  
+
   checkAuth: async () => {
     const token = localStorage.getItem('token');
     if (!token) return false;
-    
+
     try {
-      // Check if token is expired
       const decoded: any = jwtDecode(token);
       const isExpired = decoded.exp * 1000 < Date.now();
-      
+
       if (isExpired) {
-        // Try to refresh the token
-        const refreshed = await get().refreshToken();
-        if (!refreshed) return false;
+        localStorage.removeItem('token');
+        set({ user: null, token: null, isAuthenticated: false });
+        return false;
       }
+
+      const user = {
+        id: decoded.sub || decoded.userId,
+        email: decoded.email,
+        name: decoded.name || decoded.unique_name,
+        role: decoded.role || 'user'
+      };
       
-      // Get user profile
-      const response = await api.get('/users/profile');
-      
-      set({ 
-        user: response.data, 
-        token, 
-        isAuthenticated: true 
-      });
+      set({ user, token, isAuthenticated: true });
       return true;
-    } catch (error) {
-      // Token is invalid
+    } catch {
       localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
-      
-      set({ 
-        user: null, 
-        token: null, 
-        isAuthenticated: false 
-      });
+      set({ user: null, token: null, isAuthenticated: false });
       return false;
     }
   }
