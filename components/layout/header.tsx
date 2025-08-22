@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/auth-store';
 import { useModalStore } from '@/store/modal-store';
 
@@ -16,6 +16,7 @@ const navItems = [
 ];
 
 export default function Header() {
+  const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuthStore();
@@ -33,6 +34,12 @@ export default function Header() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const handleLogout = () => {
+    logout();
+    router.push('/');
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header 
@@ -132,7 +139,7 @@ export default function Header() {
                 </div>
                 <div className="py-1 border-t border-gray-100">
                   <button 
-                    onClick={() => logout()}
+                    onClick={handleLogout}
                     className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100 w-full text-left"
                   >
                     <i className="ri-logout-box-r-line mr-2"></i>
@@ -243,10 +250,7 @@ export default function Header() {
                 </Link>
                 
                 <button 
-                  onClick={() => {
-                    logout();
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={handleLogout}
                   className="flex items-center py-2 px-3 rounded-lg text-red-600 hover:bg-red-50 w-full"
                 >
                   <i className="ri-logout-box-r-line mr-2"></i>

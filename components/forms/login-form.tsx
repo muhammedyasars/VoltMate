@@ -106,44 +106,52 @@ export default function LoginForm({ onSuccess, setIsLoading }: LoginFormProps) {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setApiError('');
-    
-    if (!validate()) return;
-    
-    setIsLoading(true);
-    
-    try {
-      if (userRole === 'manager') {
-        await loginManager({
-          email: formData.email,
-          password: formData.password,
-          uniqueManagerId: formData.uniqueManagerId
-        });
-      } else {
-        await login(formData.email, formData.password, formData.remember);
-      }
-      
-      // Save login preferences to localStorage if remember me is checked
-      if (formData.remember) {
-        localStorage.setItem('loginPreferences', JSON.stringify({
-          email: formData.email,
-          userType: userRole,
-          timestamp: new Date().toISOString()
-        }));
-      }
-      
-      // Clear any registration data
-      localStorage.removeItem('registeredUser');
-      
-      onSuccess();
-    } catch (err: any) {
-      setApiError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setIsLoading(false);
+  e.preventDefault();
+  setApiError('');
+  
+  if (!validate()) return;
+  
+  setIsLoading(true);
+  
+  try {
+    if (userRole === 'manager') {
+      await loginManager({
+        email: formData.email,
+        password: formData.password,
+        uniqueManagerId: formData.uniqueManagerId
+      });
+    } else {
+      await login(formData.email, formData.password, formData.remember);
     }
-  };
-
+    
+    // Add a small delay before calling onSuccess
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Verify token is in localStorage
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Token not saved properly');
+    }
+    
+    // Save login preferences if remember me is checked
+    if (formData.remember) {
+      localStorage.setItem('loginPreferences', JSON.stringify({
+        email: formData.email,
+        userType: userRole,
+        timestamp: new Date().toISOString()
+      }));
+    }
+    
+    // Clear any registration data
+    localStorage.removeItem('registeredUser');
+    
+    onSuccess();
+  } catch (err: any) {
+    setApiError(err.message || 'Login failed. Please check your credentials.');
+  } finally {
+    setIsLoading(false);
+  }
+};
   // Load saved login preferences if "Remember me" was previously checked
   useEffect(() => {
     const loginPreferences = localStorage.getItem('loginPreferences');

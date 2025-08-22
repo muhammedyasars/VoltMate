@@ -1,61 +1,153 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/layout/header';
-import StatsWidget from '@/components/dashboard/stats-widget';
-import RecentBookingsWidget from '@/components/dashboard/recent-bookings-widget';
 import LoadingSpinner from '@/components/ui/loader';
 import { useAuthStore } from '@/store/auth-store';
-import { useBookingStore } from '@/store/booking-store';
 import Link from 'next/link';
-// import AnimatedBackground from '@/components/AnimatedBackground'; 
 import Button from '@/components/ui/button';
+import { dashboardApi } from '@/lib/api/dashboard.api';
 
-// Define a type for the color options - moved outside component
+// Define a type for the color options
 type WidgetColor = 'blue' | 'green' | 'yellow' | 'emerald' | 'purple';
 
+// Types for our data
+interface DashboardStats {
+  totalBookings: number;
+  completedSessions: number;
+  totalKwh: number;
+  savedCO2: number;
+  totalBookingsTrend?: string;
+  completedSessionsTrend?: string;
+  energyUsedTrend?: string;
+  co2SavedTrend?: string;
+}
+
+interface Booking {
+  id: number;
+  stationName: string;
+  date: string;
+  time?: string;
+  status: string;
+  kwh?: number;
+}
+
+interface EnvironmentalImpact {
+  treesEquivalent: number;
+  cleanDrivingMiles: number;
+  carbonOffset: number;
+  treesProgress: number;
+  milesProgress: number;
+  carbonProgress: number;
+}
+
+interface UsageSummary {
+  monthlyAverage: number;
+  completionRate: number;
+}
+
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  const { bookings, fetchUserBookings } = useBookingStore();
+  const router = useRouter();
+  const { user, isAuthenticated, checkAuth } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState({
+  
+  // State for dashboard data
+  const [stats, setStats] = useState<DashboardStats>({
     totalBookings: 0,
     completedSessions: 0,
     totalKwh: 0,
-    savedCO2: 0
+    savedCO2: 0,
+  });
+  
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [environmentalImpact, setEnvironmentalImpact] = useState<EnvironmentalImpact>({
+    treesEquivalent: 0,
+    cleanDrivingMiles: 0,
+    carbonOffset: 0,
+    treesProgress: 0,
+    milesProgress: 0,
+    carbonProgress: 0
+  });
+  
+  const [usageSummary, setUsageSummary] = useState<UsageSummary>({
+    monthlyAverage: 0,
+    completionRate: 0
   });
 
+  // Check authentication on page load
   useEffect(() => {
-    const loadDashboard = async () => {
+    const verifyAuth = async () => {
       try {
-        if (user?.id) {
-          await fetchUserBookings(user.id);
-          
-          // Calculate stats
-          const completed = bookings.filter(b => b.status === 'completed');
-          setStats({
-            totalBookings: bookings.length,
-            completedSessions: completed.length,
-            totalKwh: completed.reduce((sum, b) => sum + (b.kwh || 0), 0),
-            savedCO2: completed.reduce((sum, b) => sum + (b.kwh || 0) * 0.4, 0) 
-          });
+        const isAuth = await checkAuth();
+        if (!isAuth) {
+          // Not authenticated, redirect to home
+          router.push('/');
+          return;
         }
+        
+        // Now load dashboard data since user is authenticated
+        await loadDashboard();
       } catch (err) {
-        console.error('Failed to load dashboard data:', err);
-        setError('Failed to load your dashboard. Please try again.');
+        console.error('Auth check failed:', err);
+        setError('Authentication failed. Please login again.');
       } finally {
         setLoading(false);
       }
     };
+    
+    verifyAuth();
+  }, []);
 
-    loadDashboard();
-  }, [user, fetchUserBookings]);
+  // Load dashboard data
+  const loadDashboard = async () => {
+    try {
+      // Fetch user dashboard data from the API
+      const dashboardData = await dashboardApi.getUserDashboard();
+      
+      // Update state with API data
+      if (dashboardData) {
+        // Set stats
+        setStats({
+          totalBookings: dashboardData.stats?.totalBookings || 0,
+          completedSessions: dashboardData.stats?.completedSessions || 0,
+          totalKwh: dashboardData.stats?.totalKwh || 0,
+          savedCO2: dashboardData.stats?.savedCO2 || 0,
+          totalBookingsTrend: dashboardData.stats?.totalBookingsTrend,
+          completedSessionsTrend: dashboardData.stats?.completedSessionsTrend,
+          energyUsedTrend: dashboardData.stats?.energyUsedTrend,
+          co2SavedTrend: dashboardData.stats?.co2SavedTrend
+        });
+        
+        // Set bookings
+        setBookings(dashboardData.recentBookings || []);
+        
+        // Set environmental impact
+        setEnvironmentalImpact(dashboardData.environmentalImpact || {
+          treesEquivalent: 0,
+          cleanDrivingMiles: 0,
+          carbonOffset: 0,
+          treesProgress: 0,
+          milesProgress: 0,
+          carbonProgress: 0
+        });
+        
+        // Set usage summary
+        setUsageSummary(dashboardData.usageSummary || {
+          monthlyAverage: 0,
+          completionRate: 0
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard data:', err);
+      setError('Failed to load your dashboard. Please try again.');
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen relative bg-gray-50 flex items-center justify-center">
-        {/* <AnimatedBackground /> */}
         <Header />
         <LoadingSpinner size="lg" />
       </div>
@@ -65,7 +157,6 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="min-h-screen relative bg-gray-50">
-        {/* <AnimatedBackground /> */}
         <Header />
         <div className="container py-16 text-center">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl p-12 border border-gray-100">
@@ -84,7 +175,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen relative bg-gray-50">
-      {/* <AnimatedBackground /> */}
       <Header />
       
       {/* Welcome Section with matching theme */}
@@ -124,28 +214,28 @@ export default function DashboardPage() {
               value={stats.totalBookings}
               icon="ri-calendar-check-line"
               color="blue"
-              trend="+12%"
+              trend={stats.totalBookingsTrend || "+12%"}
             />
             <StatsWidgetEnhanced
               title="Completed Sessions"
               value={stats.completedSessions}
               icon="ri-charging-pile-2-line"
               color="green"
-              trend="+8%"
+              trend={stats.completedSessionsTrend || "+8%"}
             />
             <StatsWidgetEnhanced
               title="Energy Used"
               value={`${stats.totalKwh.toFixed(1)} kWh`}
               icon="ri-flashlight-line"
               color="yellow"
-              trend="+15%"
+              trend={stats.energyUsedTrend || "+15%"}
             />
             <StatsWidgetEnhanced
               title="CO2 Saved"
               value={`${stats.savedCO2.toFixed(1)} kg`}
               icon="ri-leaf-line"
               color="emerald"
-              trend="+20%"
+              trend={stats.co2SavedTrend || "+20%"}
             />
           </div>
         </div>
@@ -191,7 +281,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {bookings.slice(0, 5).map((booking, index) => (
+                    {bookings.slice(0, 5).map((booking) => (
                       <div 
                         key={booking.id} 
                         className="p-4 border border-gray-100 rounded-xl hover:border-green-200 transition-all duration-300 hover:shadow-md bg-white"
@@ -199,16 +289,16 @@ export default function DashboardPage() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center">
                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-4 ${
-                              booking.status === 'completed' 
+                              booking.status.toLowerCase() === 'completed' 
                                 ? 'bg-green-100 text-green-600' 
-                                : booking.status === 'upcoming' 
+                                : booking.status.toLowerCase() === 'upcoming' 
                                 ? 'bg-blue-100 text-blue-600'
                                 : 'bg-gray-100 text-gray-600'
                             }`}>
                               <i className={
-                                booking.status === 'completed' 
+                                booking.status.toLowerCase() === 'completed' 
                                   ? 'ri-checkbox-circle-line' 
-                                  : booking.status === 'upcoming' 
+                                  : booking.status.toLowerCase() === 'upcoming' 
                                   ? 'ri-time-line'
                                   : 'ri-calendar-line'
                               }></i>
@@ -216,7 +306,6 @@ export default function DashboardPage() {
                             <div>
                               <h4 className="font-medium text-gray-900">{booking.stationName}</h4>
                               <div className="text-sm text-gray-500">
-                                {/* Added null check for date and time */}
                                 {booking.date ? new Date(booking.date).toLocaleDateString() : 'N/A'}
                                 {booking.time ? ` • ${booking.time}` : ''}
                               </div>
@@ -224,15 +313,14 @@ export default function DashboardPage() {
                           </div>
                           <div className="text-right">
                             <div className={`text-sm font-medium px-3 py-1 rounded-full ${
-                              booking.status === 'completed' 
+                              booking.status.toLowerCase() === 'completed' 
                                 ? 'bg-green-100 text-green-700' 
-                                : booking.status === 'upcoming' 
+                                : booking.status.toLowerCase() === 'upcoming' 
                                 ? 'bg-blue-100 text-blue-700'
                                 : 'bg-gray-100 text-gray-700'
                             }`}>
-                              {/* Added null check for status */}
                               {booking.status 
-                                ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1)
+                                ? booking.status.charAt(0).toUpperCase() + booking.status.slice(1).toLowerCase()
                                 : 'Unknown'
                               }
                             </div>
@@ -321,13 +409,13 @@ export default function DashboardPage() {
                     <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-green-100">
                       <p className="text-sm text-gray-600 mb-1">Trees Equivalent</p>
                       <div className="flex items-end">
-                        <p className="text-2xl font-bold text-green-600 mr-2">{Math.floor(stats.savedCO2 / 20)}</p>
+                        <p className="text-2xl font-bold text-green-600 mr-2">{environmentalImpact.treesEquivalent || 0}</p>
                         <p className="text-xs text-gray-500 mb-1">trees planted</p>
                       </div>
                       <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
-                          style={{ width: `${Math.min(Math.floor(stats.savedCO2 / 20) * 5, 100)}%` }}
+                          style={{ width: `${environmentalImpact.treesProgress || 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -335,13 +423,13 @@ export default function DashboardPage() {
                     <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-green-100">
                       <p className="text-sm text-gray-600 mb-1">Clean Driving</p>
                       <div className="flex items-end">
-                        <p className="text-2xl font-bold text-green-600 mr-2">{Math.floor(stats.totalKwh * 3.5)}</p>
+                        <p className="text-2xl font-bold text-green-600 mr-2">{environmentalImpact.cleanDrivingMiles || 0}</p>
                         <p className="text-xs text-gray-500 mb-1">miles</p>
                       </div>
                       <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-gradient-to-r from-blue-400 to-green-400 rounded-full"
-                          style={{ width: `${Math.min(Math.floor(stats.totalKwh * 3.5) / 10, 100)}%` }}
+                          style={{ width: `${environmentalImpact.milesProgress || 0}%` }}
                         ></div>
                       </div>
                     </div>
@@ -350,12 +438,12 @@ export default function DashboardPage() {
                   <div className="mt-4 bg-white/80 backdrop-blur-sm rounded-xl p-4 border border-green-100">
                     <div className="flex justify-between items-center">
                       <p className="text-sm text-gray-600">Carbon Offset</p>
-                      <p className="text-sm font-medium text-green-600">{stats.savedCO2.toFixed(1)} kg CO₂</p>
+                      <p className="text-sm font-medium text-green-600">{environmentalImpact.carbonOffset?.toFixed(1) || 0} kg CO₂</p>
                     </div>
                     <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-gradient-to-r from-yellow-400 via-green-400 to-green-500 rounded-full"
-                        style={{ width: `${Math.min(stats.savedCO2 / 5, 100)}%` }}
+                        style={{ width: `${environmentalImpact.carbonProgress || 0}%` }}
                       ></div>
                     </div>
                   </div>
@@ -373,7 +461,7 @@ export default function DashboardPage() {
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-sm text-gray-600">Monthly Average</p>
-                      <p className="text-sm font-medium text-gray-900">{(stats.totalKwh / 3).toFixed(1)} kWh</p>
+                      <p className="text-sm font-medium text-gray-900">{usageSummary.monthlyAverage?.toFixed(1) || 0} kWh</p>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div 
@@ -387,15 +475,13 @@ export default function DashboardPage() {
                     <div className="flex justify-between items-center mb-2">
                       <p className="text-sm text-gray-600">Completion Rate</p>
                       <p className="text-sm font-medium text-gray-900">
-                        {stats.totalBookings ? Math.round((stats.completedSessions / stats.totalBookings) * 100) : 0}%
+                        {usageSummary.completionRate || 0}%
                       </p>
                     </div>
                     <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-gradient-to-r from-green-400 to-green-500 rounded-full"
-                        style={{ 
-                          width: `${stats.totalBookings ? Math.round((stats.completedSessions / stats.totalBookings) * 100) : 0}%` 
-                        }}
+                        style={{ width: `${usageSummary.completionRate || 0}%` }}
                       ></div>
                     </div>
                   </div>
@@ -418,7 +504,7 @@ export default function DashboardPage() {
   );
 }
 
-// Enhanced Stats Widget Component - fixed type issues
+// Enhanced Stats Widget Component
 function StatsWidgetEnhanced({ 
   title, 
   value, 

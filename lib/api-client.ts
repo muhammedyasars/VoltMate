@@ -1,63 +1,55 @@
-import axios from 'axios';
+// lib/api/client.ts
+import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:7118/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL,
   headers: {
-    'Content-Type': 'application/json'
-  }
+    "Content-Type": "application/json",
+  },
 });
 
-
+// Better token handling in request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Try-catch to avoid errors if localStorage is not available
+    try {
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log("Token attached to request:", config.url);
+      } else {
+        console.log("No token found for request:", config.url);
+      }
+    } catch (error) {
+      console.error("Error accessing token:", error);
     }
     return config;
   },
-  (error) => Promise.reject(error)
-);
-
-
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-       
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) {
-        
-          window.location.href = '/login?session=expired';
-          return Promise.reject(error);
-        }
-        
-        const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/refresh-token`,
-          { refreshToken }
-        );
-        
-        const { token } = response.data;
-        localStorage.setItem('token', token);
-        
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-        return api(originalRequest);
-      } catch (refreshError) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login?session=expired';
-        return Promise.reject(error);
-      }
-    }
-    
+  (error) => {
     return Promise.reject(error);
   }
 );
 
-export { api };
+// Response interceptor with better error handling
+api.interceptors.response.use(
+  (response) => {
+    console.log(`API Success [${response.config.url}]:`, response.data);
+    return response;
+  },
+  (error) => {
+    // Handle 401 errors specifically
+    if (error.response && error.response.status === 401) {
+      console.error("Authentication error (401). Redirecting to login...");
+      // You could trigger a logout here or redirect to login
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      window.location.href = '/login';
+      return Promise.reject(new Error('Authentication failed. Please login again.'));
+    }
+    
+    console.error(`API Error [${error.config?.url}]:`, error.response?.data);
+    return Promise.reject(error);
+  }
+);
+
+export default api;

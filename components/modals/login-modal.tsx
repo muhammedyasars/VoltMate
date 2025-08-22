@@ -23,10 +23,17 @@ export default function LoginModal() {
     };
   }, [isLoginOpen]);
 
-  const handleSuccess = () => {
+  const handleSuccess = async () => {
+  // Verify token exists before redirecting
+  const token = localStorage.getItem('token');
+  if (token) {
     onClose();
-    router.push('/dashboard');
-  };
+    // Use window.location for hard navigation to ensure localStorage persists
+    window.location.href = '/dashboard';
+  } else {
+    console.error('Token not found in localStorage after login');
+  }
+};
 
   const switchToRegister = () => {
     onClose();

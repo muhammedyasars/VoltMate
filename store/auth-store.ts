@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '@/lib/api-client';
+import api from '@/lib/api-client';
 import { jwtDecode } from 'jwt-decode';
 
 interface LoginCredentials {
@@ -13,23 +13,22 @@ interface ManagerLoginCredentials {
   uniqueManagerId: string;
 }
 
-// Add proper interface for manager registration that matches your DTO
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'user' | 'manager' | 'admin';
+  uniqueId?: string;
+}
+
 interface ManagerRegisterData {
-  firstName: string;
-  lastName: string;
+  name: string;
   email: string;
   password: string;
   confirmPassword: string;
   companyName: string;
   businessRegistrationNumber: string;
   phoneNumber?: string;
-}
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'user' | 'manager' | 'admin';
 }
 
 interface ManagerRegistrationResponse {
@@ -62,95 +61,193 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: false,
   error: null,
 
+  // ---------- USER LOGIN ----------
   login: async (email, password, remember = false) => {
     set({ loading: true, error: null });
     try {
       const res = await api.post('/Auth/user/login', { email, password });
-      const { token, user } = res.data;
+      
+      // Backend wraps response in ApiResponseDto<T>
+      if (!res.data.success) {
+        throw new Error(res.data.message || "Login failed");
+      }
+      
+      // Extract from nested data object
+      const responseData = res.data.data;
+      const token = responseData.token;
+      
+      // Get role and ensure it's a valid type
+      const userType = responseData.userType.toLowerCase();
+      const role = (userType === 'user' || userType === 'manager' || userType === 'admin') 
+        ? userType as 'user' | 'manager' | 'admin'
+        : 'user'; // Default to 'user' if unknown
+      
+      // Create user object from response fields
+      const user: User = {
+        id: responseData.userId.toString(),
+        email: responseData.email,
+        name: responseData.name,
+        role: role
+      };
 
+      // Store in localStorage
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      // Add a small delay to ensure localStorage is set
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       set({ user, token, isAuthenticated: true, loading: false });
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Login failed';
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Login failed';
       set({ error: errorMessage, loading: false });
       throw new Error(errorMessage);
     }
   },
 
+  // ---------- MANAGER LOGIN ----------
   loginManager: async (credentials) => {
     set({ loading: true, error: null });
     try {
       const res = await api.post('/Auth/manager/login', credentials);
-      const { token, user } = res.data;
+      
+      // Check for success
+      if (!res.data.success) {
+        throw new Error(res.data.message || "Manager login failed");
+      }
+      
+      // Extract from nested data object
+      const responseData = res.data.data;
+      const token = responseData.token;
+      
+      // Create user object from response fields with explicit type
+      const user: User = {
+        id: responseData.userId.toString(),
+        email: responseData.email,
+        name: responseData.name,
+        role: 'manager' as const,
+        uniqueId: responseData.uniqueId
+      };
 
+      // Store in localStorage
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      // Add a small delay to ensure localStorage is set
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       set({ user, token, isAuthenticated: true, loading: false });
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Manager login failed';
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Manager login failed';
       set({ error: errorMessage, loading: false });
       throw new Error(errorMessage);
     }
   },
 
+  // ---------- USER REGISTER ----------
   register: async (userData) => {
     set({ loading: true, error: null });
     try {
-      const res = await api.post('/Auth/user/register', userData);
-      const { token, user } = res.data;
+      const dto = {
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
+        confirmPassword: userData.confirmPassword,
+        phoneNumber: userData.phoneNumber || '',
+      };
+
+      const res = await api.post('/Registration/user/register', dto);
+      
+      // Check for success wrapped response
+      if (!res.data.success) {
+        throw new Error(res.data.message || "Registration failed");
+      }
+      
+      // Extract data from response
+      const responseData = res.data.data;
+      const token = responseData.token;
+      
+      // Create proper user object
+      const user: User = {
+        id: responseData.userId.toString(),
+        email: responseData.email,
+        name: responseData.name,
+        role: 'user' as const
+      };
 
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
       
       set({ user, token, isAuthenticated: true, loading: false });
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Registration failed';
+      const errorMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        'Registration failed';
       set({ error: errorMessage, loading: false });
       throw new Error(errorMessage);
     }
   },
 
+  // ---------- MANAGER REGISTER ----------
   registerManager: async (managerData: ManagerRegisterData) => {
     set({ loading: true, error: null });
     try {
-      // Transform the data to match the C# DTO structure (PascalCase)
+      // Backend DTO expects: Name, Email, Password, ConfirmPassword, CompanyName, BusinessRegistrationNumber, PhoneNumber
       const dto = {
-        FirstName: managerData.firstName,
-        LastName: managerData.lastName,
-        Email: managerData.email,
-        Password: managerData.password,
-        ConfirmPassword: managerData.confirmPassword,
-        CompanyName: managerData.companyName,
-        BusinessRegistrationNumber: managerData.businessRegistrationNumber,
-        PhoneNumber: managerData.phoneNumber || ''
+        name: managerData.name,
+        email: managerData.email,
+        password: managerData.password,
+        confirmPassword: managerData.confirmPassword,
+        companyName: managerData.companyName,
+        businessRegistrationNumber: managerData.businessRegistrationNumber,
+        phoneNumber: managerData.phoneNumber || '',
       };
 
-      const res = await api.post('/Auth/manager/register', dto);
-      
-      // Handle response that might indicate failure with status 200
+      const res = await api.post('/Registration/manager/register', dto);
+
       if (res.data.success === false) {
         const errorMessage = res.data.message || 'Manager registration failed';
         set({ error: errorMessage, loading: false });
         return { success: false, error: errorMessage };
       }
+
+      // Extract from response data
+      const responseData = res.data.data || res.data;
+      const token = responseData.token;
+      const uniqueId = responseData.uniqueId;
       
-      const { token, user, uniqueId } = res.data;
+      // Create properly typed user object
+      const user: User = {
+        id: responseData.userId.toString(),
+        email: responseData.email,
+        name: responseData.name,
+        role: 'manager' as const,
+        uniqueId: uniqueId
+      };
 
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
       
       set({ user, token, isAuthenticated: true, loading: false });
-      
-      return { 
-        success: true, 
-        uniqueId, 
+
+      return {
+        success: true,
+        uniqueId,
         message: 'Manager registration successful',
         user,
-        token
+        token,
       };
     } catch (err: any) {
-      // Server returned an error status
       let errorMessage = 'Manager registration failed';
-      
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
       } else if (err.response?.data?.error) {
@@ -161,12 +258,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       } else if (err.message) {
         errorMessage = err.message;
       }
-      
+
       set({ error: errorMessage, loading: false });
       return { success: false, error: errorMessage };
     }
   },
 
+  // ---------- LOGOUT ----------
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('loginPreferences');
@@ -174,6 +272,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user: null, token: null, isAuthenticated: false });
   },
 
+  // ---------- CHECK AUTH ----------
   checkAuth: async () => {
     const token = localStorage.getItem('token');
     if (!token) return false;
@@ -188,13 +287,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return false;
       }
 
-      const user = {
-        id: decoded.sub || decoded.userId,
+      // Get role from token and ensure it's a valid type
+      const tokenRole = decoded.role?.toLowerCase() || 'user';
+      const role = (tokenRole === 'user' || tokenRole === 'manager' || tokenRole === 'admin') 
+        ? tokenRole as 'user' | 'manager' | 'admin'
+        : 'user';
+
+      const user: User = {
+        id: decoded.sub || decoded.userId || decoded.nameid,
         email: decoded.email,
         name: decoded.name || decoded.unique_name,
-        role: decoded.role || 'user'
+        role: role
       };
-      
+
       set({ user, token, isAuthenticated: true });
       return true;
     } catch {
@@ -202,5 +307,5 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, token: null, isAuthenticated: false });
       return false;
     }
-  }
+  },
 }));

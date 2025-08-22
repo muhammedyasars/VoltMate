@@ -1,368 +1,380 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Header from '@/components/layout/header';
-import ChatWindow from '@/components/chat/chat-window';
-import ChatRoomList from '@/components/chat/chat-room-list';
-import { useChatStore } from '@/store/chat-store';
+import { useRouter } from 'next/navigation';
+import { chatApi } from '@/lib/api/chat.api';
 import { useAuthStore } from '@/store/auth-store';
-// import AnimatedBackground from '@/components/AnimatedBackground';
-import Button from '@/components/ui/button';
-
-const quickReplies = [
-  { id: 1, text: "I'll check that for you right away." },
-  { id: 2, text: "Could you provide more details about the issue?" },
-  { id: 3, text: "Have you tried restarting the charging session?" },
-  { id: 4, text: "I'm transferring you to our technical specialist." },
-  { id: 5, text: "What error message are you seeing on the charger?" },
-];
-
-const chatFilters = [
-  { id: 'all', label: 'All Conversations', icon: 'ri-message-3-line' },
-  { id: 'unread', label: 'Unread', icon: 'ri-mail-unread-line' },
-  { id: 'active', label: 'Active', icon: 'ri-chat-3-line' },
-  { id: 'resolved', label: 'Resolved', icon: 'ri-check-double-line' },
-  { id: 'starred', label: 'Starred', icon: 'ri-star-line' },
-];
+import Header from '@/components/layout/header';
+import { format, isToday, isYesterday } from 'date-fns';
 
 export default function ChatPage() {
-  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showAiAssistant, setShowAiAssistant] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const router = useRouter();
   const { user } = useAuthStore();
-  const { rooms, messages, sendMessage, fetchRooms, fetchMessages } = useChatStore();
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [activeRoom, setActiveRoom] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [messageInput, setMessageInput] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch chat rooms on load
   useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        const response = await chatApi.getChatRooms();
+        console.log("API Response for rooms:", response); // Debug log
+        
+        // Make sure we have an array of rooms
+        const roomsData = Array.isArray(response) ? response : 
+                        Array.isArray(response?.data) ? response.data : [];
+        
+        // Log the first room to debug
+        if (roomsData.length > 0) {
+          console.log("First room object:", roomsData[0]);
+        }
+                        
+        setRooms(roomsData);
+        setLoading(false);
+        
+        // Auto-select first room if available
+        if (roomsData.length > 0 && !activeRoom) {
+          setActiveRoom(roomsData[0].id);
+          fetchMessages(roomsData[0].id);
+        }
+      } catch (error) {
+        console.error('Error fetching chat rooms:', error);
+        setRooms([]);
+        setLoading(false);
+      }
+    };
+    
     fetchRooms();
-  }, [fetchRooms]);
+  }, []);
 
+  // Fetch messages when active room changes
   useEffect(() => {
-    if (selectedRoom) {
-      fetchMessages(selectedRoom);
+    if (activeRoom) {
+      fetchMessages(activeRoom);
     }
-  }, [selectedRoom, fetchMessages]);
+  }, [activeRoom]);
 
-  const handleSendMessage = (content: string) => {
-    if (selectedRoom) {
-      sendMessage(selectedRoom, content);
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Fetch messages for a room
+  const fetchMessages = async (roomId: string) => {
+    try {
+      const response = await chatApi.getChatMessages(roomId);
+      console.log("API Response for messages:", response); // Debug log
       
-      // Simulate agent typing response after user sends message
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-      }, 3000);
+      // Make sure we have an array of messages
+      const messagesData = Array.isArray(response) ? response : 
+                         Array.isArray(response?.data) ? response.data : [];
+      setMessages(messagesData);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      setMessages([]);
     }
   };
 
-  const handleAttachmentClick = () => {
+  // Send a message
+  const handleSendMessage = async () => {
+    if (!activeRoom || !messageInput.trim()) return;
+    
+    try {
+      await chatApi.sendMessage(activeRoom, { message: messageInput });
+      setMessageInput('');
+      // Refresh messages
+      fetchMessages(activeRoom);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  // Handle attachment
+  const handleAttachment = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      // Here you would implement actual file upload logic
-      console.log('Files selected:', files);
-      
-      // For demo purposes, simulate sending a message with an attachment
-      if (selectedRoom) {
-        sendMessage(selectedRoom, `[Attachment: ${files[0].name}]`);
-      }
+  // Format date for chat list
+  const formatChatDate = (dateString?: string) => {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    if (isToday(date)) {
+      return format(date, 'h:mm a');
+    } else if (isYesterday(date)) {
+      return 'Yesterday';
+    } else {
+      return format(date, 'MMM d');
     }
   };
 
-  const filteredRooms = rooms.filter(room => {
-    // Apply search filter
-    if (searchQuery && !room.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    
-    // Apply category filter
-    if (activeFilter === 'all') return true;
-    if (activeFilter === 'unread' && room.unreadCount > 0) return true;
-    if (activeFilter === 'active' && room.status === 'active') return true;
-    if (activeFilter === 'resolved' && room.status === 'resolved') return true;
-    if (activeFilter === 'starred' && room.isStarred) return true;
-    
-    return false;
-  });
+  // Format message time
+  const formatMessageTime = (dateString: string) => {
+    if (!dateString) return '';
+    return format(new Date(dateString), 'h:mm a');
+  };
+
+  // Get room name safely
+  const getRoomName = (room: any) => {
+    // Try different properties that might contain the name
+    return room?.name || room?.title || room?.roomName || "Chat Room";
+  };
+
+  // Get room status safely
+  const getRoomStatus = (room: any) => {
+    return room?.status || "unknown";
+  };
+
+  // Filter rooms based on search - WITH FIX for undefined name
+  const filteredRooms = Array.isArray(rooms) 
+    ? rooms.filter(room => {
+        const roomName = getRoomName(room);
+        return !searchQuery || roomName.toLowerCase().includes(searchQuery.toLowerCase());
+      })
+    : [];
 
   return (
-    <div className="min-h-screen relative bg-gray-50">
-      {/* <AnimatedBackground /> */}
+    <div className="h-screen flex flex-col bg-gray-100">
+      {/* Simple header */}
       <Header />
       
-      {/* Chat Header with enhanced styling */}
-      <section className="relative z-10 pt-24 pb-12 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"></div>
-        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10"></div>
-        
-        <div className="relative z-10 max-w-7xl mx-auto">
-          <div className="text-center">
-            <div className="inline-flex items-center px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full mb-6">
-              <span className="text-green-400 text-sm font-medium">
-                <i className="ri-customer-service-2-line mr-2"></i>
-                24/7 Support
-              </span>
-            </div>
-            
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-              Chat Support
-            </h1>
-            
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Get real-time assistance with your EV charging needs from our dedicated support team
-            </p>
-          </div>
-        </div>
-      </section>
-      
-      {/* Main Chat Container */}
-      <section className="relative z-10 -mt-8 px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-100 overflow-hidden" 
-               style={{ height: 'calc(100vh - 250px)' }}>
-            <div className="grid grid-cols-1 md:grid-cols-3 h-full">
-              {/* Chat Sidebar */}
-              <div className="md:border-r border-gray-200 flex flex-col h-full">
-                {/* Search and Filters */}
-                <div className="p-4 border-b border-gray-200">
-                  <div className="relative mb-4">
-                    <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    <input
-                      type="text"
-                      placeholder="Search conversations..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg 
-                               focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent
-                               focus:bg-white transition-all duration-300"
-                    />
-                  </div>
-                  
-                  {/* Chat Filters */}
-                  <div className="flex space-x-2 overflow-x-auto pb-2 custom-scrollbar">
-                    {chatFilters.map(filter => (
-                      <button
-                        key={filter.id}
-                        onClick={() => setActiveFilter(filter.id)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap flex items-center
-                                  transition-all duration-300 ${
-                                    activeFilter === filter.id
-                                      ? 'bg-green-100 text-green-700 border border-green-200'
-                                      : 'bg-gray-50 text-gray-600 border border-gray-100 hover:bg-gray-100'
-                                  }`}
-                      >
-                        <i className={`${filter.icon} mr-1.5`}></i>
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                {/* Chat Room List */}
-                <div className="overflow-y-auto flex-1 custom-scrollbar">
-                  {filteredRooms.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                        <i className="ri-chat-off-line text-gray-400 text-2xl"></i>
-                      </div>
-                      <p className="text-gray-500 font-medium mb-1">No conversations found</p>
-                      <p className="text-gray-400 text-sm">Try adjusting your search or filters</p>
-                    </div>
-                  ) : (
-                    <ChatRoomList
-                      rooms={filteredRooms}
-                      selectedRoom={selectedRoom}
-                      onSelectRoom={setSelectedRoom}
-                    />
-                  )}
-                </div>
-                
-                {/* Start New Chat Button */}
-                <div className="p-4 border-t border-gray-200 bg-gray-50">
-                  <button 
-                    className="w-full py-2 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white 
-                             rounded-lg font-medium flex items-center justify-center hover:from-green-600 
-                             hover:to-green-700 transition-all duration-300 shadow-sm"
-                  >
-                    <i className="ri-chat-new-line mr-2"></i>
-                    New Conversation
-                  </button>
-                </div>
+      {/* Main chat container - full screen minus header */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Chat list */}
+        <div className="w-1/3 bg-white border-r border-gray-200 flex flex-col">
+          {/* Search bar */}
+          <div className="p-3 border-b border-gray-200">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search chats..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-100 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500"
+              />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
               </div>
-
-              {/* Chat Window */}
-              <div className="md:col-span-2 flex flex-col h-full bg-gradient-to-br from-gray-50 to-white relative">
-                {selectedRoom ? (
-                  <>
-                    {/* Chat Header */}
-                    <div className="p-4 border-b border-gray-200 bg-white/80 backdrop-blur-sm flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="relative">
-                          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                            <i className="ri-customer-service-2-line text-green-600"></i>
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+            </div>
+          </div>
+          
+          {/* Rooms list */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex justify-center items-center h-full">
+                <div className="loader"></div>
+              </div>
+            ) : filteredRooms.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                <p>No conversations found</p>
+              </div>
+            ) : (
+              <div>
+                {filteredRooms.map((room) => (
+                  <div
+                    key={room.id}
+                    onClick={() => setActiveRoom(room.id)}
+                    className={`p-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 ${
+                      activeRoom === room.id ? 'bg-gray-50' : ''
+                    }`}
+                  >
+                    <div className="flex items-center">
+                      <div className="relative mr-3">
+                        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                          <span className="text-green-600 font-medium">
+                            {getRoomName(room).substring(0, 2).toUpperCase()}
+                          </span>
                         </div>
-                        <div className="ml-3">
-                          <h3 className="font-semibold text-gray-900">
-                            {rooms.find(r => r.id === selectedRoom)?.name || 'Support Agent'}
-                          </h3>
-                          <p className="text-xs text-green-600 flex items-center">
-                            <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5"></span>
-                            Online • Typically replies in 5 minutes
-                          </p>
+                        {getRoomStatus(room) === 'active' && (
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between">
+                          <h4 className="font-medium text-gray-900 truncate">{getRoomName(room)}</h4>
+                          <span className="text-xs text-gray-500">
+                            {formatChatDate(room.lastMessageAt)}
+                          </span>
                         </div>
+                        <p className="text-sm text-gray-500 truncate">
+                          {room.lastMessageText || 'No messages yet'}
+                        </p>
                       </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
-                          <i className="ri-phone-line text-gray-600"></i>
-                        </button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
-                          <i className="ri-vidicon-line text-gray-600"></i>
-                        </button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
-                          <i className="ri-more-2-fill text-gray-600"></i>
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Enhanced Chat Window */}
-                    <ChatWindow
-                      room={rooms.find(r => r.id === selectedRoom)}
-                      messages={messages}
-                      onSendMessage={handleSendMessage}
-                      currentUser={user}
-                      isTyping={isTyping}
-                    />
-                    
-                    {/* Chat Input Area with Enhanced Features */}
-                    <div className="p-4 border-t border-gray-200 bg-white/80 backdrop-blur-sm">
-                      {/* Quick Replies */}
-                      <div className="mb-3 flex space-x-2 overflow-x-auto pb-2 custom-scrollbar">
-                        {quickReplies.map(reply => (
-                          <button
-                            key={reply.id}
-                            onClick={() => handleSendMessage(reply.text)}
-                            className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm whitespace-nowrap
-                                     hover:bg-green-100 hover:text-green-700 transition-colors"
-                          >
-                            {reply.text}
-                          </button>
-                        ))}
-                      </div>
-                      
-                      {/* Input Box with Attachments and AI */}
-                      <div className="flex items-center space-x-2">
-                        <button 
-                          onClick={handleAttachmentClick}
-                          className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center
-                                   bg-gray-100 hover:bg-gray-200 transition-colors"
-                        >
-                          <i className="ri-attachment-2 text-gray-600"></i>
-                        </button>
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          onChange={handleFileUpload}
-                          className="hidden"
-                        />
-                        
-                        <div className="relative flex-grow">
-                          <input
-                            type="text"
-                            placeholder="Type your message..."
-                            className="w-full pl-4 pr-10 py-3 bg-gray-100 border border-gray-200 rounded-lg 
-                                     focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent
-                                     focus:bg-white transition-all duration-300"
-                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage((e.target as HTMLInputElement).value)}
-                          />
-                          <button 
-                            onClick={() => setShowAiAssistant(!showAiAssistant)}
-                            className={`absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center 
-                                      justify-center transition-colors ${
-                                        showAiAssistant 
-                                          ? 'bg-green-500 text-white' 
-                                          : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                      }`}
-                          >
-                            <i className="ri-robot-line text-sm"></i>
-                          </button>
-                        </div>
-                        
-                        <button className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center
-                                         bg-gradient-to-r from-green-500 to-green-600 text-white
-                                         hover:from-green-600 hover:to-green-700 transition-colors shadow-sm">
-                          <i className="ri-send-plane-fill"></i>
-                        </button>
-                      </div>
-                      
-                      {/* AI Assistant Suggestions */}
-                      {showAiAssistant && (
-                        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center">
-                              <div className="w-6 h-6 rounded-full bg-green-200 flex items-center justify-center mr-2">
-                                <i className="ri-robot-line text-green-700 text-xs"></i>
-                              </div>
-                              <span className="text-sm font-medium text-green-800">AI Assistant Suggestions</span>
-                            </div>
-                            <button 
-                              onClick={() => setShowAiAssistant(false)}
-                              className="text-green-700 hover:text-green-900"
-                            >
-                              <i className="ri-close-line"></i>
-                            </button>
-                          </div>
-                          <div className="space-y-2">
-                            {[
-                              "I see you're having an issue with charging. Is the station powering on correctly?",
-                              "What error code is displaying on the charging station screen?",
-                              "Could you share a photo of the charging connector?"
-                            ].map((suggestion, i) => (
-                              <button
-                                key={i}
-                                onClick={() => handleSendMessage(suggestion)}
-                                className="w-full text-left p-2 text-sm bg-white border border-green-100 rounded-md
-                                         hover:bg-green-100 transition-colors"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
+                      {room.unreadCount > 0 && (
+                        <div className="ml-2 bg-green-500 text-white text-xs font-medium rounded-full w-5 h-5 flex items-center justify-center">
+                          {room.unreadCount}
                         </div>
                       )}
                     </div>
-                  </>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* New chat button */}
+          <div className="p-3 border-t border-gray-200">
+            <button 
+              className="w-full py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors"
+              onClick={() => {
+                // Here you would implement logic to create a new chat
+                console.log('Create new chat');
+              }}
+            >
+              New Chat
+            </button>
+          </div>
+        </div>
+        
+        {/* Chat window */}
+        <div className="w-2/3 flex flex-col bg-[#e5ded8]">
+          {activeRoom && rooms.length > 0 ? (
+            <>
+              {/* Chat header */}
+              <div className="p-3 bg-white border-b border-gray-200 flex items-center">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center mr-3">
+                  <span className="text-green-600 font-medium">
+                    {getRoomName(rooms.find(r => r.id === activeRoom)).substring(0, 2).toUpperCase() || 'CH'}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-medium text-gray-900">
+                    {getRoomName(rooms.find(r => r.id === activeRoom))}
+                  </h3>
+                  <p className="text-xs text-gray-500">
+                    {getRoomStatus(rooms.find(r => r.id === activeRoom)) === 'active' ? 'Online' : 'Offline'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                    <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    <p>No messages yet</p>
+                    <p className="text-sm mt-2">Start the conversation!</p>
+                  </div>
                 ) : (
-                  <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-gray-50 to-white">
-                    <div className="text-center p-8 max-w-md">
-                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i className="ri-customer-service-line text-green-600 text-3xl"></i>
+                  <div className="space-y-2">
+                    {messages.map((message) => (
+                      <div 
+                        key={message.id} 
+                        className={`flex ${message.isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div 
+                          className={`max-w-[70%] p-3 rounded-lg ${
+                            message.isCurrentUser 
+                              ? 'bg-green-100 text-gray-800 rounded-br-none' 
+                              : 'bg-white text-gray-800 rounded-bl-none'
+                          }`}
+                        >
+                          <p>{message.message || message.content || ''}</p>
+                          <div className="flex justify-end mt-1">
+                            <span className="text-xs text-gray-500">
+                              {formatMessageTime(message.sentAt || message.createdAt || '')}
+                            </span>
+                            {message.isCurrentUser && (
+                              <span className="ml-1 text-xs text-gray-500">
+                                {message.isRead ? (
+                                  <span className="text-blue-500">✓✓</span>
+                                ) : (
+                                  <span>✓</span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-2">Welcome to EVCharge Support</h3>
-                      <p className="text-gray-600 mb-8">
-                        Select a conversation or start a new chat to get help with your charging needs
-                      </p>
-                      <button className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg 
-                                       font-medium hover:from-green-600 hover:to-green-700 transition-all shadow-md">
-                        <i className="ri-chat-new-line mr-2"></i>
-                        Start New Chat
-                      </button>
-                    </div>
+                    ))}
+                    <div ref={messagesEndRef} />
                   </div>
                 )}
               </div>
+              
+              {/* Message input */}
+              <div className="p-3 bg-white border-t border-gray-200">
+                <div className="flex items-center">
+                  <button 
+                    onClick={handleAttachment}
+                    className="p-2 text-gray-500 hover:text-gray-700 rounded-full"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={(e) => {
+                      // Handle file upload
+                      console.log('File selected:', e.target.files);
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Type a message"
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    className="flex-1 py-2 px-3 mx-2 bg-gray-100 rounded-full focus:outline-none focus:ring-1 focus:ring-green-500"
+                  />
+                  <button 
+                    onClick={handleSendMessage}
+                    className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                    disabled={!messageInput.trim()}
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+              <svg className="w-24 h-24 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <h3 className="text-xl font-medium mb-2">Welcome to Chat</h3>
+              <p className="text-center max-w-md px-4">
+                Select a conversation from the list or start a new chat to begin messaging
+              </p>
             </div>
-          </div>
+          )}
         </div>
-      </section>
+      </div>
+      
+      {/* CSS for loader */}
+      <style jsx>{`
+        .loader {
+          border: 3px solid #f3f3f3;
+          border-radius: 50%;
+          border-top: 3px solid #22c55e;
+          width: 30px;
+          height: 30px;
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }

@@ -11,7 +11,6 @@ import { Clock, Zap, MapPin, Calendar, LogIn } from 'lucide-react';
 import LoginModal from '@/components/modals/login-modal';
 import RegisterModal from "@/components/modals/register-modal";
 import { useModalStore } from '@/store/modal-store';
-import managerRegister from '@/components/modals/manager-register-modal'
 
 const testimonials = [
   {

@@ -3,8 +3,7 @@ export interface User {
   name: string;
   email: string;
   role: string;
-  createdAt: string;
-  updatedAt: string;
+  uniqueId?: string;
 }
 
 export interface TokenResponse {
@@ -30,6 +29,26 @@ export interface LoginResponse {
   refreshToken: string;
 }
 
-export interface RefreshTokenRequest {
-  refreshToken: string;
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
+  errors: any;
+}
+
+export interface LoginResponseData {
+  token: string;
+  userType: string;
+  userId: number;
+  email: string;
+  name: string;
+  uniqueId?: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  uniqueId?: string;
 }

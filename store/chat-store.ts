@@ -1,151 +1,161 @@
+// store/chat-store.ts
 import { create } from 'zustand';
-import { api } from '@/lib/api-client';
-import { startSignalRConnection } from '@/lib/signalr';
+import { chatApi } from '@/lib/api/chat.api';
+
+// Define interfaces based on your backend response structure
+interface ChatRoom {
+  id: string;
+  name: string;
+  status: string;
+  isStarred: boolean;
+  unreadCount: number;
+  lastMessageText?: string;
+  lastMessageAt?: string;
+  participants: { userId: number; userName: string }[];
+}
+
+interface ChatMessage {
+  id: number;
+  senderId: number;
+  senderName: string;
+  message: string; // Note: changed from 'content' to 'message' to match backend
+  messageType: string;
+  attachmentUrl?: string;
+  isRead: boolean;
+  sentAt: string; // Note: changed from 'createdAt' to 'sentAt' to match backend
+  isCurrentUser: boolean;
+}
 
 interface ChatState {
-  rooms: any[];
-  messages: any[];
-  currentRoom: any | null;
-  connectionStatus: 'disconnected' | 'connecting' | 'connected';
+  rooms: ChatRoom[];
+  messages: ChatMessage[];
+  activeRoom: string | null;
   loading: boolean;
   error: string | null;
-  connection: any | null;
+  
+  // Actions
   fetchRooms: () => Promise<void>;
   fetchMessages: (roomId: string) => Promise<void>;
-  sendMessage: (roomId: string, content: string) => Promise<void>;
-  createRoom: (userId: string, managerId?: string) => Promise<void>;
-  connect: () => Promise<void>;
-  disconnect: () => void;
+  sendMessage: (roomId: string, message: string) => Promise<void>;
+  createRoom: (name: string, participantIds: number[]) => Promise<void>;
+  markAsRead: (roomId: string) => Promise<void>;
+  setActiveRoom: (roomId: string | null) => void;
+  closeRoom: (roomId: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   rooms: [],
   messages: [],
-  currentRoom: null,
-  connectionStatus: 'disconnected',
+  activeRoom: null,
   loading: false,
   error: null,
-  connection: null,
-
+  
   fetchRooms: async () => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.get('/chat/rooms');
-      set({ rooms: response.data, loading: false });
+      const data = await chatApi.getChatRooms();
+      // Ensure we have an array even if the API returns null or undefined
+      set({ rooms: Array.isArray(data) ? data : [], loading: false });
     } catch (error: any) {
+      console.error('Failed to fetch rooms:', error);
       set({ 
-        error: error.response?.data?.message || 'Failed to fetch chat rooms', 
-        loading: false 
+        error: error.message || 'Failed to load chat rooms', 
+        loading: false,
+        rooms: [] // Ensure rooms is always an array
       });
     }
   },
-
-  fetchMessages: async (roomId) => {
+  
+  fetchMessages: async (roomId: string) => {
     set({ loading: true, error: null });
-    
     try {
-      const response = await api.get(`/chat/rooms/${roomId}/messages`);
-      set({ 
-        messages: response.data,
-        currentRoom: get().rooms.find(r => r.id === roomId),
-        loading: false 
-      });
+      const data = await chatApi.getChatMessages(roomId);
+      // Ensure we have an array even if the API returns null or undefined
+      set({ messages: Array.isArray(data) ? data : [], loading: false });
     } catch (error: any) {
+      console.error(`Failed to fetch messages for room ${roomId}:`, error);
       set({ 
-        error: error.response?.data?.message || 'Failed to fetch messages', 
-        loading: false 
+        error: error.message || 'Failed to load messages', 
+        loading: false,
+        messages: [] // Ensure messages is always an array
       });
     }
   },
-
-  sendMessage: async (roomId, content) => {
+  
+  sendMessage: async (roomId: string, message: string) => {
     try {
-      // First try to send via SignalR if connected
-      const connection = get().connection;
-      if (connection && get().connectionStatus === 'connected') {
-        await connection.invoke('SendMessage', roomId, content);
-        return;
+      const sentMessage = await chatApi.sendMessage(roomId, { message });
+      
+      // Optimistically update messages list
+      const currentMessages = get().messages;
+      set({ 
+        messages: [...currentMessages, sentMessage]
+      });
+      
+      // Refresh rooms to update last message
+      get().fetchRooms();
+    } catch (error: any) {
+      console.error('Failed to send message:', error);
+      set({ error: error.message || 'Failed to send message' });
+    }
+  },
+  
+  createRoom: async (name: string, participantIds: number[]) => {
+    try {
+      const room = await chatApi.createChatRoom({
+        name,
+        participantIds
+      });
+      
+      // Add new room to list and refresh
+      await get().fetchRooms();
+      set({ activeRoom: room.id });
+    } catch (error: any) {
+      console.error('Failed to create room:', error);
+      set({ error: error.message || 'Failed to create chat room' });
+    }
+  },
+  
+  markAsRead: async (roomId: string) => {
+    try {
+      await chatApi.markMessagesAsRead(roomId);
+      
+      // Update unread count locally
+      const rooms = get().rooms.map(room => 
+        room.id === roomId ? { ...room, unreadCount: 0 } : room
+      );
+      
+      set({ rooms });
+    } catch (error: any) {
+      console.error('Failed to mark messages as read:', error);
+    }
+  },
+  
+  setActiveRoom: (roomId: string | null) => {
+    set({ activeRoom: roomId });
+    if (roomId) {
+      get().markAsRead(roomId);
+    }
+  },
+  
+  closeRoom: async (roomId: string) => {
+    try {
+      await chatApi.closeChatRoom(roomId);
+      
+      // Update room status locally
+      const rooms = get().rooms.map(room => 
+        room.id === roomId ? { ...room, status: 'closed' } : room
+      );
+      
+      set({ rooms });
+      
+      // If this was the active room, clear it
+      if (get().activeRoom === roomId) {
+        set({ activeRoom: null });
       }
-      
-      // Fallback to REST API
-      const response = await api.post(`/chat/rooms/${roomId}/messages`, { content });
-      
-      set(state => ({
-        messages: [...state.messages, response.data]
-      }));
     } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Failed to send message'
-      });
-      throw error;
+      console.error('Failed to close room:', error);
+      set({ error: error.message || 'Failed to close chat room' });
     }
-  },
-
-  createRoom: async (userId, managerId) => {
-    set({ loading: true, error: null });
-    
-    try {
-      const response = await api.post('/chat/rooms', { userId, managerId });
-      
-      set(state => ({ 
-        rooms: [...state.rooms, response.data],
-        currentRoom: response.data,
-        loading: false 
-      }));
-    } catch (error: any) {
-      set({ 
-        error: error.response?.data?.message || 'Failed to create chat room', 
-        loading: false 
-      });
-      throw error;
-    }
-  },
-
-  connect: async () => {
-    if (get().connectionStatus !== 'disconnected') return;
-    
-    set({ connectionStatus: 'connecting' });
-    
-    try {
-      const connection = await startSignalRConnection();
-      
-      // Register event handlers
-      connection.on('ReceiveMessage', (message) => {
-        set(state => ({
-          messages: [...state.messages, message]
-        }));
-      });
-      
-      connection.on('UserJoined', (roomId, userId) => {
-        // Update room participants if needed
-      });
-      
-      connection.on('UserLeft', (roomId, userId) => {
-        // Update room participants if needed
-      });
-      
-      set({ 
-        connection, 
-        connectionStatus: 'connected' 
-      });
-    } catch (error) {
-      set({ 
-        connectionStatus: 'disconnected',
-        error: 'Failed to connect to chat service'
-      });
-    }
-  },
-
-  disconnect: () => {
-    const { connection } = get();
-    if (connection) {
-      connection.stop();
-    }
-    
-    set({ 
-      connection: null,
-      connectionStatus: 'disconnected'
-    });
   }
 }));
